@@ -1,0 +1,12 @@
+name = "bill-split-reader"
+main = "index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+# Websites allowed to use this reader (comma-separated, no trailing slash).
+ALLOWED_ORIGINS = "https://raj-aadarsh.github.io,http://localhost:8080,http://localhost:8765"
+
+# The Gemini key is NOT here. It is stored as an encrypted secret:
+#   Cloudflare dashboard → Workers → bill-split-reader → Settings →
+#   Variables and Secrets → Add → Type: Secret → Name: GEMINI_API_KEY

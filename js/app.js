@@ -1,5 +1,6 @@
 import { computeSplit, round2 } from './split.js';
-import { readWithGemini, readOnDevice, readFromText, testGeminiKey } from './ocr.js';
+import { readWithGemini, readWithSharedReader, readOnDevice, readFromText, testGeminiKey } from './ocr.js';
+import { SHARED_READER_URL } from './config.js';
 
 // ---------- tiny helpers ----------
 
@@ -197,7 +198,7 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 VIEWS.home = () => {
-  const aiOn = !!settings.apiKey && settings.mode !== 'device';
+  const aiOn = !!(settings.apiKey || SHARED_READER_URL) && settings.mode !== 'device';
   const cont =
     draft && draft.bill.items.length && draft.step !== 'result'
       ? `<div class="section-title">In progress</div>
@@ -258,11 +259,15 @@ VIEWS.settings = () => {
   const ks = keyTest
     ? `<div class="status-line ${keyTest.state === 'ok' ? 'ok' : keyTest.state === 'bad' ? 'bad' : ''}">${esc(keyTest.msg)}</div>`
     : '';
+  const builtIn = SHARED_READER_URL
+    ? `<div class="banner"><span class="b-icon">✨</span><div><b>AI bill reading is built in.</b> No key needed. Just scan.</div></div>`
+    : '';
   return `
     <div class="section-title">AI bill reading · free</div>
-    <div class="card">
-      <div style="font-weight:600">Google Gemini API key</div>
-      <p class="hint" style="margin:6px 0 0">Reads bills far more accurately than on-device reading. The free tier needs no card. Your key is saved only on this phone.</p>
+    ${builtIn}
+    <details class="card" ${SHARED_READER_URL && !settings.apiKey ? '' : 'open'} style="${builtIn ? 'margin-top:12px' : ''}">
+      <summary style="font-weight:600;cursor:pointer">${SHARED_READER_URL ? 'Advanced: use your own Gemini key' : 'Google Gemini API key'}</summary>
+      <p class="hint" style="margin:6px 0 0">${SHARED_READER_URL ? 'Optional. Only needed if the built-in reader is busy. ' : 'Reads bills far more accurately than on-device reading. '}The free tier needs no card. Your key is saved only on this phone.</p>
       <ol class="steps">
         <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with Google.</li>
         <li>Tap <b>Create API key</b> and copy it.</li>
@@ -280,12 +285,12 @@ VIEWS.settings = () => {
         ${ks}
         ${settings.model ? `<div class="hint" style="margin:4px 0 0">Model: ${esc(settings.model)}</div>` : ''}
       </div>
-    </div>
+    </details>
 
     <div class="section-title">How to read bills</div>
     <div class="card" style="padding:4px 16px">
       <label class="radio-row"><input type="radio" name="mode" value="auto" data-change="mode" ${settings.mode !== 'device' ? 'checked' : ''}/>
-        <div><div>AI when a key is saved</div><div class="t2">If AI fails or the free limit is reached, it switches to on-device reading.</div></div></label>
+        <div><div>Use AI when available</div><div class="t2">If AI fails or the free limit is reached, it switches to on-device reading.</div></div></label>
       <label class="radio-row"><input type="radio" name="mode" value="device" data-change="mode" ${settings.mode === 'device' ? 'checked' : ''}/>
         <div><div>Always on this phone</div><div class="t2">Uses Tesseract OCR. Fully private, but less accurate on faded bills.</div></div></label>
     </div>
@@ -650,13 +655,15 @@ async function handlePhoto(file) {
   go('reading');
   const alive = () => reading && reading.token === token;
 
-  const useAI = settings.apiKey && settings.mode !== 'device';
   let result;
   let note = '';
-  try {
-    if (useAI) {
-      try {
-        result = await readWithGemini(file, {
+  const onStatus = (s) => alive() && setReadStatus(s);
+  // Try AI readers in order: own key (if set) → shared reader → on-device.
+  const aiReaders = [];
+  if (settings.mode !== 'device') {
+    if (settings.apiKey)
+      aiReaders.push(() =>
+        readWithGemini(file, {
           key: settings.apiKey,
           model: settings.model,
           onModel: (m) => {
@@ -665,15 +672,26 @@ async function handlePhoto(file) {
               saveSettings();
             }
           },
-          onStatus: (s) => alive() && setReadStatus(s),
-        });
+          onStatus,
+        }),
+      );
+    if (SHARED_READER_URL) aiReaders.push(() => readWithSharedReader(file, { url: SHARED_READER_URL, onStatus }));
+  }
+  try {
+    for (const read of aiReaders) {
+      try {
+        result = await read();
+        note = '';
+        break;
       } catch (e) {
         if (!alive()) return;
         note = `${e.message} Used on-device reading instead.`;
-        const n = $('#read-note');
-        if (n) n.textContent = note;
-        reading.note = note;
       }
+    }
+    if (!result && note) {
+      const n = $('#read-note');
+      if (n) n.textContent = note;
+      reading.note = note;
     }
     if (!result) {
       result = await readOnDevice(file, {
