@@ -1270,8 +1270,22 @@ a {
   accent-color: var(--accent);
 }
 
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  vertical-align: 2px;
+}
+
 .radio-row .t2 {
+  margin-top: 2px;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--muted);
 }
 

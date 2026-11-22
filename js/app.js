@@ -259,9 +259,9 @@ VIEWS.settings = () => `
     <div class="section-title">Bill reading</div>
     <div class="card" style="padding:4px 16px">
       <label class="radio-row"><input type="radio" name="mode" value="auto" data-change="mode" ${settings.mode !== 'device' ? 'checked' : ''}/>
-        <div><div>AI</div><div class="t2">Most accurate. Needs internet.</div></div></label>
+        <div><div>AI <small class="tag">Recommended</small></div><div class="t2">Google’s AI reads the bill like a person would, even crumpled, faded or tilted ones. Needs internet and takes a few seconds. If it can’t respond, On-device OCR is used automatically.</div></div></label>
       <label class="radio-row"><input type="radio" name="mode" value="device" data-change="mode" ${settings.mode === 'device' ? 'checked' : ''}/>
-        <div><div>On-device OCR</div><div class="t2">Works offline. Best on clear, straight photos.</div></div></label>
+        <div><div>On-device OCR</div><div class="t2">Reads the text right on your phone. Works without internet and the photo never leaves your phone. Best with a clear, flat, well-lit photo. Check the items afterwards.</div></div></label>
     </div>`;
 
 // ----- paste -----
