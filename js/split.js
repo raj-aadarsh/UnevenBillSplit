@@ -24,9 +24,15 @@ const sum = (arr, f = (x) => x) => arr.reduce((a, x) => a + f(x), 0);
  * @param {{id:string,name:string}[]} people
  * @param {number|string} [discountPct]       extra discount %, applied at the end
  */
-export function computeSplit(bill, people, discountPct = 0) {
-  const pct = Math.min(100, Math.max(0, num(discountPct)));
+export function computeSplit(bill, people, discountPct = 0, paid = null) {
   const billDiscount = Math.max(0, num(bill.discount));
+  const preBillTotal = sum(bill.items, (it) => num(it.amount)) - billDiscount + sum(bill.charges, (c) => num(c.amount));
+  // "Amount actually paid" wins over a discount %: the gap between the bill
+  // and what was paid (card / app offer) is shared in proportion to each
+  // person's share. Paying more than the bill (e.g. a tip) works the same way.
+  const paidNum = num(paid);
+  const usePaid = paid !== null && paid !== '' && paidNum > 0 && preBillTotal > 0;
+  const pct = usePaid ? (1 - paidNum / preBillTotal) * 100 : Math.min(100, Math.max(0, num(discountPct)));
   const n = people.length;
 
   const rows = people.map((p) => ({
@@ -83,14 +89,15 @@ export function computeSplit(bill, people, discountPct = 0) {
   rows.forEach((r, i) => (r.final = floors[i] / 100));
 
   const billTotal = itemsTotal - billDiscount + chargesTotal;
-  const extraDiscountTotal = (billTotal * pct) / 100;
+  const extraDiscountTotal = usePaid ? billTotal - paidNum : (billTotal * pct) / 100;
   return {
     people: rows,
     itemsTotal: round2(itemsTotal),
     chargesTotal: round2(chargesTotal),
     billDiscount: round2(billDiscount),
     billTotal: round2(billTotal),
-    discountPct: pct,
+    discountPct: Math.round(pct * 100) / 100,
+    paid: usePaid ? round2(paidNum) : null,
     extraDiscountTotal: round2(extraDiscountTotal),
     grandTotal: round2(billTotal - extraDiscountTotal),
     sharesTotal: round2(sum(rows, (r) => r.final)),

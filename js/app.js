@@ -122,6 +122,7 @@ function newDraft(src = {}) {
     },
     people: draft?.people?.length ? draft.people.map((p) => ({ id: uid(), name: p.name })) : [],
     discountPct: 0,
+    paid: '',
     assignMode: 'item',
     activePerson: null,
   };
@@ -138,7 +139,7 @@ const TITLES = {
   review: 'Check items',
   people: 'Who’s splitting?',
   assign: 'Who had what?',
-  discount: 'Discount',
+  discount: 'Amount paid',
   result: 'The split',
 };
 
@@ -524,40 +525,59 @@ FOOTERS.assign = () => {
       .map((p, i) => `<span class="t"><span class="avatar" style="--c:${colorOf(i)}">${esc(initial(p.name))}</span>${money(p.final)}</span>`)
       .join('')}</div>
     <div class="meta"><span>${left ? `<span class="warn">${left} item${left > 1 ? 's' : ''} not assigned</span>` : '<strong>All items assigned ✓</strong>'}</span><span>incl. tax share</span></div>
-    <button class="btn btn-primary btn-block ${left ? 'disabled' : ''}" data-action="to-discount">Next · Discount</button>`);
+    <button class="btn btn-primary btn-block ${left ? 'disabled' : ''}" data-action="to-discount">Next · Amount paid</button>`);
 };
 
 // ----- discount -----
 
-VIEWS.discount = () => `
+const finalSplit = () => computeSplit(draft.bill, draft.people, draft.discountPct, draft.paid);
+const pctText = (p) => `${Math.abs(Math.round(p * 100) / 100)}%`;
+function discountLine(s) {
+  if (s.extraDiscountTotal > 0.004) return `Discount ${money(s.extraDiscountTotal)} (${pctText(s.discountPct)})`;
+  if (s.extraDiscountTotal < -0.004) return `Extra paid ${money(-s.extraDiscountTotal)} (${pctText(s.discountPct)})`;
+  return '';
+}
+
+VIEWS.discount = () => {
+  const s = computeSplit(draft.bill, draft.people, 0);
+  return `
   <div class="card center" style="padding:24px 16px">
-    <div style="font-weight:650;font-size:18px">Any extra discount on the final bill?</div>
-    <div class="hint" style="margin:6px 0 0">For example a card offer, coupon or app discount. It comes off each person’s share after tax.</div>
-    <div class="pct-input"><input id="pct-in" inputmode="decimal" data-field="discountPct" value="${draft.discountPct ? draft.discountPct : ''}" placeholder="0" aria-label="Discount percent" /><span>%</span></div>
-    <div class="chips center">${[0, 5, 10, 15, 20, 25, 50]
-      .map((p) => `<button class="chip ${parseAmt(draft.discountPct) === p ? 'on' : ''}" data-action="set-pct" data-pct="${p}">${p ? `${p}%` : 'None'}</button>`)
-      .join('')}</div>
+    <div style="font-weight:650;font-size:18px">How much did you actually pay?</div>
+    <div class="hint" style="margin:6px 0 0">Enter the final amount after any card, app or coupon discount. The difference is shared in proportion to what each person owes.</div>
+    <div class="pct-input"><span>${esc(settings.currency)}</span><input id="paid-in" inputmode="decimal" data-field="paid" value="${draft.paid ? esc(draft.paid) : ''}" placeholder="${amtInputValue(s.billTotal)}" aria-label="Amount paid" style="width:210px" /></div>
+    <div class="chips center"><button class="chip ${draft.paid ? '' : 'on'}" data-action="paid-full">Paid the full bill · ${money(s.billTotal)}</button></div>
   </div>
   <div class="card summary" id="disc-preview">${discountPreview()}</div>`;
+};
 
 function discountPreview() {
-  const s = computeSplit(draft.bill, draft.people, draft.discountPct);
+  const s = finalSplit();
+  const diff = s.extraDiscountTotal;
+  const row =
+    Math.abs(diff) > 0.004
+      ? `<div class="sum-row"><span class="muted">${diff > 0 ? 'Discount received' : 'Extra paid'} <small>(${pctText(s.discountPct)})</small></span><span>${diff > 0 ? '−' : '+'}${money(Math.abs(diff))}</span></div>`
+      : '';
+  const warn =
+    s.paid && s.paid < s.billTotal * 0.5
+      ? `<div class="match bad">That is less than half the bill. Check the amount.</div>`
+      : '';
   return `
     <div class="sum-row"><span class="muted">Bill total</span><span>${money(s.billTotal)}</span></div>
-    ${s.discountPct ? `<div class="sum-row"><span class="muted">Extra discount ${s.discountPct}%</span><span>−${money(s.extraDiscountTotal)}</span></div>` : ''}
-    <div class="sum-row total"><span>To pay</span><span>${money(s.grandTotal)}</span></div>`;
+    ${row}
+    <div class="sum-row total"><span>${s.paid ? 'You paid' : 'To pay'}</span><span>${money(s.grandTotal)}</span></div>
+    ${warn}`;
 }
 FOOTERS.discount = () => actionbar(`<button class="btn btn-primary btn-block" data-action="to-result">See the split</button>`);
 
 // ----- result -----
 
 VIEWS.result = () => {
-  const s = computeSplit(draft.bill, draft.people, draft.discountPct);
+  const s = finalSplit();
   const b = draft.bill;
   const subBits = [`Items ${money(s.itemsTotal)}`];
   if (s.chargesTotal) subBits.push(`Taxes &amp; charges ${money(s.chargesTotal)}`);
   if (s.billDiscount) subBits.push(`Bill discount −${money(s.billDiscount)}`);
-  if (s.discountPct) subBits.push(`${s.discountPct}% off −${money(s.extraDiscountTotal)}`);
+  if (discountLine(s)) subBits.push(discountLine(s));
   const ok = Math.abs(s.sharesTotal - s.grandTotal) < 0.005;
   return `
     <div class="total-card">
@@ -575,8 +595,8 @@ VIEWS.result = () => {
           <div class="sum-row"><span>Items</span><span>${money(p.itemTotal)}</span></div>
           ${p.billDiscShare ? `<div class="sum-row"><span>Bill discount share</span><span>−${money(p.billDiscShare)}</span></div>` : ''}
           ${s.chargesTotal ? `<div class="sum-row"><span>Taxes &amp; charges (1/${s.people.length})</span><span>${money(p.chargeShare)}</span></div>` : ''}
-          ${s.discountPct ? `<div class="sum-row"><span>Before discount</span><span>${money(p.beforeDiscount)}</span></div>
-          <div class="sum-row"><span>Discount ${s.discountPct}%</span><span>−${money(p.extraDiscount)}</span></div>` : ''}
+          ${Math.abs(p.extraDiscount) > 0.004 ? `<div class="sum-row"><span>Before discount</span><span>${money(p.beforeDiscount)}</span></div>
+          <div class="sum-row"><span>${p.extraDiscount > 0 ? 'Discount' : 'Extra paid'} (${pctText(s.discountPct)})</span><span>${p.extraDiscount > 0 ? '−' : '+'}${money(Math.abs(p.extraDiscount))}</span></div>` : ''}
           <div class="sum-row strong"><span>Pays</span><span>${money(p.final)}</span></div>
         </div></details>`,
       )
@@ -590,18 +610,18 @@ FOOTERS.result = () =>
 AFTER.result = () => upsertHistory();
 
 function upsertHistory() {
-  const s = computeSplit(draft.bill, draft.people, draft.discountPct);
+  const s = finalSplit();
   const entry = { ...clone(draft), savedAt: Date.now(), grandTotal: s.grandTotal };
   pastSplits = [entry, ...pastSplits.filter((h) => h.id !== draft.id)].slice(0, 50);
   saveHistory();
 }
 
 function shareText() {
-  const s = computeSplit(draft.bill, draft.people, draft.discountPct);
+  const s = finalSplit();
   const lines = [`🧾 ${draft.bill.merchant || 'Bill'} · ${fmtDate(draft.createdAt)}`, `Total: ${money(s.grandTotal)}`];
   const extra = [];
   if (s.chargesTotal) extra.push(`taxes & charges ${money(s.chargesTotal)} split equally`);
-  if (s.discountPct) extra.push(`${s.discountPct}% discount applied`);
+  if (discountLine(s)) extra.push(discountLine(s).toLowerCase());
   if (extra.length) lines.push(`(${extra.join(', ')})`);
   lines.push('');
   for (const p of s.people) {
@@ -892,13 +912,13 @@ app.addEventListener('click', async (e) => {
     }
 
     // discount
-    case 'set-pct':
-      draft.discountPct = Number(el.dataset.pct);
+    case 'paid-full':
+      draft.paid = '';
+      draft.discountPct = 0;
       saveDraft();
       render();
       break;
     case 'to-result':
-      draft.discountPct = Math.min(100, Math.max(0, parseAmt(draft.discountPct)));
       go('result');
       break;
 
@@ -978,11 +998,12 @@ app.addEventListener('input', (e) => {
       saveDraft();
       $('#review-summary').innerHTML = reviewSummary();
       break;
-    case 'discountPct':
-      draft.discountPct = t.value;
+    case 'paid':
+      draft.paid = t.value.replace(/[^\d.]/g, '');
+      draft.discountPct = 0;
       saveDraft();
       $('#disc-preview').innerHTML = discountPreview();
-      $$('[data-action="set-pct"]').forEach((c) => c.classList.toggle('on', parseAmt(t.value) === Number(c.dataset.pct)));
+      $$('[data-action="paid-full"]').forEach((c) => c.classList.toggle('on', !draft.paid));
       break;
   }
 });

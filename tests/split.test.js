@@ -71,3 +71,46 @@ test('reports unassigned items', () => {
   const r = computeSplit(bill, people, 0);
   assert.equal(r.unassigned.length, 1);
 });
+
+test('amount actually paid: discount shared in proportion, adds up exactly', () => {
+  const bill = {
+    items: [
+      { id: '1', name: 'Paneer', amount: 360, people: ['a', 'b'] },
+      { id: '2', name: 'Biryani', amount: 260, people: ['c'] },
+      { id: '3', name: 'Naan', amount: 180, people: ['a', 'b', 'c'] },
+      { id: '4', name: 'Soda', amount: 270, people: ['a'] },
+    ],
+    charges: [{ id: 'x', name: 'Taxes', amount: 110 }],
+  };
+  const r = computeSplit(bill, people, 0, 1062); // bill 1180, paid 1062 → 118 off (10%)
+  assert.equal(r.billTotal, 1180);
+  assert.equal(r.extraDiscountTotal, 118);
+  assert.equal(r.discountPct, 10);
+  assert.deepEqual(r.people.map((p) => p.final), [492, 249, 321]);
+  assert.equal(r.sharesTotal, 1062);
+});
+
+test('odd paid amount still adds up to the paise', () => {
+  const bill = {
+    items: [
+      { id: '1', name: 'A', amount: 333, people: ['a'] },
+      { id: '2', name: 'B', amount: 333, people: ['b'] },
+      { id: '3', name: 'C', amount: 334, people: ['c'] },
+    ],
+    charges: [{ id: 'x', name: 'GST', amount: 50 }],
+  };
+  const r = computeSplit(bill, people, 0, 977.77);
+  assert.equal(r.sharesTotal, 977.77);
+  assert.equal(r.grandTotal, 977.77);
+});
+
+test('paying more than the bill (tip) is shared in proportion', () => {
+  const bill = { items: [{ id: '1', name: 'A', amount: 100, people: ['a'] }, { id: '2', name: 'B', amount: 300, people: ['b'] }], charges: [] };
+  const r = computeSplit(bill, people.slice(0, 2), 0, 440);
+  assert.deepEqual(r.people.map((p) => p.final), [110, 330]);
+});
+
+test('empty paid amount means no discount', () => {
+  const bill = { items: [{ id: '1', name: 'A', amount: 100, people: ['a'] }], charges: [] };
+  assert.equal(computeSplit(bill, people.slice(0, 1), 0, '').grandTotal, 100);
+});

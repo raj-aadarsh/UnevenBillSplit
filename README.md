@@ -1,6 +1,6 @@
 # Bill Split
 
-Scan a restaurant bill, tap who had what, and get each person's share. Taxes and service charge are split equally, and an extra discount % can come off everyone's share at the end.
+Scan a restaurant bill, tap who had what, and get each person's share. Taxes and service charge are split equally, and if you paid less than the bill (card or app offer), the discount is shared out fairly.
 
 It's a free web app (PWA). Host it on GitHub Pages and add it to your phone's home screen. It works on iPhone, Android, iPad and tablets, and costs nothing to run.
 
@@ -10,7 +10,7 @@ It's a free web app (PWA). Host it on GitHub Pages and add it to your phone's ho
 2. **Check items.** Fix any misread name or amount. A green tick means the items match the bill's grand total.
 3. **People.** Enter how many people and their names. Recent names appear as one-tap chips.
 4. **Who had what.** Tap names on each item, or tap **Everyone**. Use **By person** to pick everything one person had.
-5. **Discount.** Optional extra % off (card offer, coupon, etc.).
+5. **Amount paid.** Enter what you actually paid. The difference from the bill total (card, app or coupon discount) comes off each person in proportion to their share.
 6. **The split.** Shows each person's amount with a full breakdown. **Share** sends it to WhatsApp.
 
 ### The maths
@@ -20,7 +20,7 @@ person items   = Σ item amount ÷ number of people on that item
 tax share      = (all taxes + service charge + round-off) ÷ number of people
 bill discount  = discount printed on bill, shared in proportion to items
 before disc.   = items − bill discount share + tax share
-final          = before disc. × (1 − extra discount %)
+final          = before disc. × (amount paid ÷ bill total)
 ```
 
 Amounts are rounded to paise so that everyone's shares add up exactly to the total.
