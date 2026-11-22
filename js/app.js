@@ -44,7 +44,9 @@ const K = { settings: 'ubs.settings', draft: 'ubs.draft' };
 store.del('ubs.history');
 const COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5', '#0d9488', '#9333ea'];
 
-let settings = { mode: 'auto', currency: '₹', ...store.get(K.settings, {}) };
+const CUR = '₹';
+let settings = { mode: 'auto', ...store.get(K.settings, {}) };
+delete settings.currency; // always rupees
 // Older versions let people save their own Gemini key on the phone. The key now
 // lives only on the server, so wipe any copy left in this browser.
 if ('apiKey' in settings || 'model' in settings) {
@@ -70,7 +72,7 @@ const money = (n) => {
   const abs = Math.abs(v);
   const whole = Number.isInteger(abs);
   const s = abs.toLocaleString('en-IN', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
-  return `${v < 0 ? '−' : ''}${settings.currency}${s}`;
+  return `${v < 0 ? '−' : ''}${CUR}${s}`;
 };
 const amtInputValue = (n) => (n === '' || n === null || n === undefined ? '' : String(round2(Number(n))));
 const colorOf = (i) => COLORS[i % COLORS.length];
@@ -253,28 +255,14 @@ VIEWS.home = () => {
 
 // ----- settings -----
 
-VIEWS.settings = () => {
-  return `
+VIEWS.settings = () => `
     <div class="section-title">Bill reading</div>
-    ${
-      SHARED_READER_URL
-        ? `<div class="banner"><span class="b-icon">✨</span><div><b>AI bill reading is built in.</b> Nothing to set up. Just scan.</div></div>`
-        : ''
-    }
-
-    <div class="card" style="padding:4px 16px;margin-top:12px">
+    <div class="card" style="padding:4px 16px">
       <label class="radio-row"><input type="radio" name="mode" value="auto" data-change="mode" ${settings.mode !== 'device' ? 'checked' : ''}/>
-        <div><div>Use AI when available</div><div class="t2">If AI fails or the free limit is reached, it switches to on-device reading.</div></div></label>
+        <div><div>AI</div><div class="t2">Most accurate. Needs internet.</div></div></label>
       <label class="radio-row"><input type="radio" name="mode" value="device" data-change="mode" ${settings.mode === 'device' ? 'checked' : ''}/>
-        <div><div>Always on this phone</div><div class="t2">Uses Tesseract OCR. Fully private, but less accurate on faded bills.</div></div></label>
-    </div>
-
-    <div class="section-title">Currency symbol</div>
-    <div class="field"><label for="cur-in">Shown before amounts</label>
-      <input id="cur-in" class="in" style="width:64px;text-align:right;font-weight:700" maxlength="4" value="${esc(settings.currency)}" data-change="currency" /></div>
-
-    <p class="hint">With AI on, bill photos are sent to Google Gemini to be read. Free-tier data may be used by Google to improve its products. Nothing else leaves your phone.</p>`;
-};
+        <div><div>On-device OCR</div><div class="t2">Works offline. Best on clear, straight photos.</div></div></label>
+    </div>`;
 
 // ----- paste -----
 
@@ -315,7 +303,7 @@ function rowHtml(list, r) {
   return `<div class="edit-row" data-id="${r.id}">
     <input class="in name" data-list="${list}" data-field="name" value="${esc(r.name)}" placeholder="${list === 'items' ? 'Item name' : 'e.g. CGST'}" enterkeyhint="next" autocapitalize="words" />
     ${list === 'charges' ? `<button class="mini-btn" data-action="neg" data-list="${list}" aria-label="Make negative">±</button>` : ''}
-    <div class="money"><span class="cur">${esc(settings.currency)}</span><input class="in" data-list="${list}" data-field="amount" inputmode="decimal" value="${amtInputValue(r.amount)}" placeholder="0" enterkeyhint="next" /></div>
+    <div class="money"><span class="cur">${CUR}</span><input class="in" data-list="${list}" data-field="amount" inputmode="decimal" value="${amtInputValue(r.amount)}" placeholder="0" enterkeyhint="next" /></div>
     <button class="mini-btn" data-action="del-row" data-list="${list}" aria-label="Remove">${I.x}</button>
   </div>`;
 }
@@ -342,11 +330,11 @@ VIEWS.review = () => {
     <button class="add-btn" data-action="add-row" data-list="charges">+ Add tax / service charge</button>
     <div class="section-title">Discount printed on bill <small>optional</small></div>
     <div class="field"><label>Shared by what each person ordered</label>
-      <div class="money"><span class="cur">${esc(settings.currency)}</span><input class="in" data-field="discount" inputmode="decimal" value="${b.discount ? amtInputValue(b.discount) : ''}" placeholder="0" /></div></div>
+      <div class="money"><span class="cur">${CUR}</span><input class="in" data-field="discount" inputmode="decimal" value="${b.discount ? amtInputValue(b.discount) : ''}" placeholder="0" /></div></div>
     <div class="card summary" id="review-summary">${reviewSummary()}</div>
     <div class="section-title">Total printed on bill <small>updates when you remove a charge</small></div>
     <div class="field"><label>Grand total</label>
-      <div class="money"><span class="cur">${esc(settings.currency)}</span><input class="in" data-field="total" inputmode="decimal" value="${b.total ? amtInputValue(b.total) : ''}" placeholder="0" /></div></div>
+      <div class="money"><span class="cur">${CUR}</span><input class="in" data-field="total" inputmode="decimal" value="${b.total ? amtInputValue(b.total) : ''}" placeholder="0" /></div></div>
     ${b.rawText ? `<details class="card" style="margin-top:16px"><summary style="font-weight:600">Text read from the photo</summary>
       <pre style="white-space:pre-wrap;font-size:12px;color:var(--muted);margin:10px 0 0">${esc(b.rawText)}</pre></details>` : ''}`;
 };
@@ -508,7 +496,7 @@ VIEWS.discount = () => {
   <div class="card center" style="padding:24px 16px">
     <div style="font-weight:650;font-size:18px">How much did you actually pay?</div>
     <div class="hint" style="margin:6px 0 0">Enter the final amount after any card, app or coupon discount. The difference is shared in proportion to what each person owes.</div>
-    <div class="pct-input"><span>${esc(settings.currency)}</span><input id="paid-in" inputmode="decimal" data-field="paid" value="${draft.paid ? esc(draft.paid) : ''}" placeholder="${amtInputValue(s.billTotal)}" aria-label="Amount paid" style="width:210px" /></div>
+    <div class="pct-input"><span>${CUR}</span><input id="paid-in" inputmode="decimal" data-field="paid" value="${draft.paid ? esc(draft.paid) : ''}" placeholder="${amtInputValue(s.billTotal)}" aria-label="Amount paid" style="width:210px" /></div>
     <div class="chips center"><button class="chip ${draft.paid ? '' : 'on'}" data-action="paid-full">Paid the full bill · ${money(s.billTotal)}</button></div>
   </div>
   <div class="card summary" id="disc-preview">${discountPreview()}</div>`;
@@ -942,10 +930,6 @@ app.addEventListener('change', (e) => {
       break;
     case 'mode':
       settings.mode = t.value;
-      saveSettings();
-      break;
-    case 'currency':
-      settings.currency = t.value.trim() || '₹';
       saveSettings();
       break;
   }
