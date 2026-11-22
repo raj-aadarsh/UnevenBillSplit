@@ -1,6 +1,7 @@
 // Bill Split — shared AI reader (Cloudflare Worker, free plan).
 //
-// Holds the Gemini API key as an encrypted Worker secret (GEMINI_API_KEY).
+// Holds the Gemini API key as an encrypted Worker secret
+// (GEMINI_API_KEY, or Gemini_Api_Key as it was first saved).
 // The key never leaves Cloudflare: the website sends a bill photo, this
 // Worker asks Gemini to read it, and only the item list is sent back.
 //
@@ -55,7 +56,8 @@ export default {
     if (request.method === 'GET' && url.pathname === '/') return json({ ok: true }, 200, cors);
     if (request.method !== 'POST' || url.pathname !== '/read') return json({ error: 'Not found' }, 404, cors);
     if (!allowed) return json({ error: 'This reader only works from the Bill Split website.' }, 403, cors);
-    if (!env.GEMINI_API_KEY) return json({ error: 'AI reader is not set up yet.' }, 503, cors);
+    const apiKey = env.GEMINI_API_KEY || env.Gemini_Api_Key;
+    if (!apiKey) return json({ error: 'AI reader is not set up yet.' }, 503, cors);
 
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     if (rateLimited(ip)) return json({ error: 'Too many scans. Wait a minute.' }, 429, cors);
@@ -71,7 +73,7 @@ export default {
     }
 
     try {
-      const bill = await geminiReadBill({ key: env.GEMINI_API_KEY, base64: image, model: env.GEMINI_MODEL });
+      const bill = await geminiReadBill({ key: apiKey, base64: image, model: env.GEMINI_MODEL });
       return json(bill, 200, cors);
     } catch (e) {
       const status = e instanceof ReadError && e.kind === 'quota' ? 429 : 502;

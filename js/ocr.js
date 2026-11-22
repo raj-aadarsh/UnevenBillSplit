@@ -102,22 +102,26 @@ function preprocessCanvas(canvas) {
 export async function readWithSharedReader(blob, { url, onStatus = () => {} }) {
   onStatus('Preparing photo…');
   const image = await toJpegBase64(blob);
-  onStatus('Reading bill with AI…');
+  onStatus('Reading bill with AI… (about 15 sec)');
+  // Don't keep people waiting at the table: give up after 40 s and read on the phone.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 40_000);
   let res;
+  let body = null;
   try {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image }),
+      signal: ctrl.signal,
     });
+    body = await res.json().catch(() => null);
   } catch {
-    throw new ReadError('No internet connection to reach the AI reader.', { kind: 'network' });
-  }
-  let body = null;
-  try {
-    body = await res.json();
-  } catch {
-    /* ignore */
+    throw ctrl.signal.aborted
+      ? new ReadError('The AI reader took too long.', { kind: 'network' })
+      : new ReadError('No internet connection to reach the AI reader.', { kind: 'network' });
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     const kind = res.status === 429 ? 'quota' : 'error';
