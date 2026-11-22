@@ -1,6 +1,6 @@
 {
-  "name": "Bill Split",
-  "short_name": "Bill Split",
+  "name": "Uneven Bill Split",
+  "short_name": "Uneven Bill Split",
   "description": "Scan a bill, tap who had what, split it fairly. Taxes shared equally.",
   "start_url": "./",
   "scope": "./",

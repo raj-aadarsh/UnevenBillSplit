@@ -132,7 +132,7 @@ function newDraft(src = {}) {
 const FLOW = ['review', 'people', 'assign', 'discount', 'result'];
 const PREV = { settings: 'home', paste: 'home', reading: 'home', review: 'home', people: 'review', assign: 'people', discount: 'assign', result: 'discount' };
 const TITLES = {
-  home: 'Bill Split',
+  home: 'Uneven Bill Split',
   settings: 'Settings',
   paste: 'Paste bill text',
   reading: 'Reading bill',
@@ -221,7 +221,7 @@ VIEWS.home = () => {
   let install = '';
   if (!isStandalone()) {
     if (installPrompt) {
-      install = `<div class="banner"><span class="b-icon">📲</span><div style="flex:1">Install Bill Split as an app on this phone.</div><button class="btn btn-primary" style="min-height:36px;padding:0 14px;font-size:15px" data-action="install">Install</button></div>`;
+      install = `<div class="banner"><span class="b-icon">📲</span><div style="flex:1">Install Uneven Bill Split as an app on this phone.</div><button class="btn btn-primary" style="min-height:36px;padding:0 14px;font-size:15px" data-action="install">Install</button></div>`;
     } else if (isIOS()) {
       install = `<div class="banner"><span class="b-icon">📲</span><div>Use it like an app: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>.</div></div>`;
     }
@@ -248,7 +248,7 @@ VIEWS.home = () => {
     </button>
     ${install ? `<div style="margin-top:12px">${install}</div>` : ''}
     ${cont}
-    <p class="hint center" style="margin-top:28px">Your bills and names stay on this phone.</p>`;
+    <p class="hint center" style="margin-top:28px">No history is kept. Nothing is saved online.</p>`;
 };
 
 // ----- settings -----

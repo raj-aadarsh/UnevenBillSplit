@@ -1,4 +1,4 @@
-# Bill Split
+# Uneven Bill Split
 
 Scan a restaurant bill, tap who had what, and get each person's share. Taxes and service charge are split equally, and if you paid less than the bill (card or app offer), the discount is shared out fairly.
 

@@ -1,4 +1,4 @@
-// Bill Split — shared AI reader (Cloudflare Worker, free plan).
+// Uneven Bill Split — shared AI reader (Cloudflare Worker, free plan).
 //
 // Holds the Gemini API key as an encrypted Worker secret
 // (GEMINI_API_KEY, or Gemini_Api_Key as it was first saved).
@@ -55,7 +55,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: allowed ? 204 : 403, headers: cors });
     if (request.method === 'GET' && url.pathname === '/') return json({ ok: true }, 200, cors);
     if (request.method !== 'POST' || url.pathname !== '/read') return json({ error: 'Not found' }, 404, cors);
-    if (!allowed) return json({ error: 'This reader only works from the Bill Split website.' }, 403, cors);
+    if (!allowed) return json({ error: 'This reader only works from the Uneven Bill Split website.' }, 403, cors);
     const apiKey = env.GEMINI_API_KEY || env.Gemini_Api_Key;
     if (!apiKey) return json({ error: 'AI reader is not set up yet.' }, 503, cors);
 
