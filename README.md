@@ -8,7 +8,7 @@ It's a free web app (PWA). Host it on GitHub Pages and add it to your phone's ho
 
 1. **Scan bill** (camera), or **From photos**, **Paste text**, or **Type items**.
 2. **Check items.** Fix any misread name or amount. A green tick means the items match the bill's grand total.
-3. **People.** Enter how many people and their names. Recent names appear as one-tap chips.
+3. **People.** Enter how many people and their names.
 4. **Who had what.** Tap names on each item, or tap **Everyone**. Use **By person** to pick everything one person had.
 5. **Amount paid.** Enter what you actually paid. The difference from the bill total (card, app or coupon discount) comes off each person in proportion to their share.
 6. **The split.** Shows each person's amount with a full breakdown. **Share** sends it to WhatsApp.
@@ -97,4 +97,6 @@ sw.js           offline cache
 vendor/         Tesseract.js 7.0.0 (Apache-2.0) + English data
 ```
 
-When you change files, bump `VERSION` in `sw.js` so installed phones pick up the update.
+When you change files, bump `VERSION` in `sw.js`. Installed apps check for a new version every time they are opened and reload into it automatically.
+
+**Privacy:** no split history is kept. The only things stored on the phone are the split currently in progress (deleted when you tap **New split**) and two settings.

@@ -13,7 +13,6 @@ const parseAmt = (v) => {
   const n = parseFloat(String(v ?? '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
-const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const store = {
   get(k, d) {
@@ -40,7 +39,9 @@ const store = {
   },
 };
 
-const K = { settings: 'ubs.settings', draft: 'ubs.draft', history: 'ubs.history' };
+const K = { settings: 'ubs.settings', draft: 'ubs.draft' };
+// No split history is kept. Remove any left by earlier versions.
+store.del('ubs.history');
 const COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5', '#0d9488', '#9333ea'];
 
 let settings = { mode: 'auto', currency: '₹', ...store.get(K.settings, {}) };
@@ -52,10 +53,10 @@ if ('apiKey' in settings || 'model' in settings) {
   store.set(K.settings, settings);
 }
 let draft = store.get(K.draft, null);
-let pastSplits = store.get(K.history, []);
 let view = 'home';
 let reading = null; // { url, status, progress, token, error }
 let installPrompt = null;
+let reloadWhenHome = false; // a new version is ready; reload when back on home
 
 const saveSettings = () => store.set(K.settings, settings);
 let draftTimer;
@@ -63,7 +64,6 @@ const saveDraft = () => {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(() => (draft ? store.set(K.draft, draft) : store.del(K.draft)), 250);
 };
-const saveHistory = () => store.set(K.history, pastSplits);
 
 const money = (n) => {
   const v = round2(Number(n) || 0);
@@ -144,6 +144,10 @@ const TITLES = {
 };
 
 function go(v, { replace = false } = {}) {
+  if (v === 'home' && reloadWhenHome) {
+    location.replace(location.pathname);
+    return;
+  }
   view = v;
   if (draft && FLOW.includes(v)) {
     draft.step = v;
@@ -214,18 +218,6 @@ VIEWS.home = () => {
            <div class="t2">${draft.bill.items.length} items · ${esc(TITLES[draft.step] || '')}</div></div>
            <span class="amt" style="color:var(--accent)">Continue</span></button></div>`
       : '';
-  const recent = pastSplits.length
-    ? `<div class="section-title">Recent splits</div><div class="list">${pastSplits
-        .slice(0, 15)
-        .map(
-          (h) => `<div class="list-row" role="button" tabindex="0" data-action="open-history" data-id="${h.id}">
-            <div class="grow"><div class="t1">${esc(h.bill.merchant || 'Bill')}</div>
-            <div class="t2">${fmtDate(h.savedAt)} · ${h.people.length} people</div></div>
-            <span class="amt">${money(h.grandTotal)}</span>
-            <button class="x" data-action="del-history" data-id="${h.id}" aria-label="Delete">×</button></div>`,
-        )
-        .join('')}</div>`
-    : '';
   let install = '';
   if (!isStandalone()) {
     if (installPrompt) {
@@ -256,7 +248,6 @@ VIEWS.home = () => {
     </button>
     ${install ? `<div style="margin-top:12px">${install}</div>` : ''}
     ${cont}
-    ${recent}
     <p class="hint center" style="margin-top:28px">Your bills and names stay on this phone.</p>`;
 };
 
@@ -282,11 +273,6 @@ VIEWS.settings = () => {
     <div class="field"><label for="cur-in">Shown before amounts</label>
       <input id="cur-in" class="in" style="width:64px;text-align:right;font-weight:700" maxlength="4" value="${esc(settings.currency)}" data-change="currency" /></div>
 
-    <div class="section-title">Data</div>
-    <div class="list">
-      <button class="list-row" data-action="clear-history"><div class="grow"><div class="t1" style="color:var(--danger)">Clear split history</div>
-      <div class="t2">${pastSplits.length} saved on this phone</div></div></button>
-    </div>
     <p class="hint">With AI on, bill photos are sent to Google Gemini to be read. Free-tier data may be used by Google to improve its products. Nothing else leaves your phone.</p>`;
 };
 
@@ -394,24 +380,8 @@ FOOTERS.review = () =>
 
 // ----- people -----
 
-function recentNames() {
-  const used = new Set(draft.people.map((p) => p.name.trim().toLowerCase()));
-  const freq = new Map();
-  for (const h of pastSplits) for (const p of h.people) {
-    const k = p.name.trim();
-    if (!k || /^person \d+$/i.test(k)) continue;
-    freq.set(k, (freq.get(k) || 0) + 1);
-  }
-  return [...freq.entries()]
-    .filter(([n]) => !used.has(n.toLowerCase()))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 14)
-    .map(([n]) => n);
-}
-
 VIEWS.people = () => {
   const n = draft.people.length;
-  const recents = recentNames();
   return `
     <div class="card count-card">
       <span class="lbl">How many people?</span>
@@ -430,7 +400,7 @@ VIEWS.people = () => {
         )
         .join('')}
     </div>
-    ${recents.length ? `<div class="section-title">Recent people</div><div class="chips">${recents.map((r) => `<button class="chip" data-action="add-recent" data-name="${esc(r)}">+ ${esc(r)}</button>`).join('')}</div>` : ''}`;
+`;
 };
 FOOTERS.people = () => actionbar(`<button class="btn btn-primary btn-block" data-action="to-assign">Next · Who had what</button>`);
 AFTER.people = () => {
@@ -607,15 +577,6 @@ FOOTERS.result = () =>
   actionbar(`<div class="row-btns">
     <button class="btn btn-secondary" data-action="new-split">New split</button>
     <button class="btn btn-primary" data-action="share">${I.share} Share</button></div>`);
-AFTER.result = () => upsertHistory();
-
-function upsertHistory() {
-  const s = finalSplit();
-  const entry = { ...clone(draft), savedAt: Date.now(), grandTotal: s.grandTotal };
-  pastSplits = [entry, ...pastSplits.filter((h) => h.id !== draft.id)].slice(0, 50);
-  saveHistory();
-}
-
 function shareText() {
   const s = finalSplit();
   const lines = [`🧾 ${draft.bill.merchant || 'Bill'} · ${fmtDate(draft.createdAt)}`, `Total: ${money(s.grandTotal)}`];
@@ -736,33 +697,6 @@ app.addEventListener('click', async (e) => {
         render();
       }
       break;
-    case 'open-history': {
-      if (e.target.closest('[data-action="del-history"]')) return;
-      const h = pastSplits.find((x) => x.id === id);
-      if (!h) return;
-      draft = clone(h);
-      delete draft.savedAt;
-      delete draft.grandTotal;
-      saveDraft();
-      go('result');
-      break;
-    }
-    case 'del-history':
-      e.stopPropagation();
-      if (confirm('Delete this split?')) {
-        pastSplits = pastSplits.filter((x) => x.id !== id);
-        saveHistory();
-        render();
-      }
-      break;
-    case 'clear-history':
-      if (pastSplits.length && confirm('Delete all saved splits from this phone?')) {
-        pastSplits = [];
-        saveHistory();
-        render();
-      }
-      break;
-
     // paste
     case 'read-text': {
       const text = $('#paste-in').value;
@@ -842,15 +776,6 @@ app.addEventListener('click', async (e) => {
       setPeopleCount(draft.people.length - 1);
       render();
       break;
-    case 'add-recent': {
-      const name = el.dataset.name;
-      const empty = draft.people.find((p) => !p.name.trim());
-      if (empty) empty.name = name;
-      else if (draft.people.length < 30) draft.people.push({ id: uid(), name });
-      saveDraft();
-      render();
-      break;
-    }
     case 'to-assign':
       finalisePeople();
       go('assign');
@@ -942,7 +867,6 @@ app.addEventListener('click', async (e) => {
       break;
     }
     case 'new-split':
-      upsertHistory();
       draft = null;
       store.del(K.draft);
       go('home', { replace: true });
@@ -1037,6 +961,26 @@ window.addEventListener('beforeinstallprompt', (e) => {
 history.replaceState({ v: 'home' }, '');
 render();
 
+// Updates: check for a new version on every launch and whenever the app comes
+// back to the foreground; when one is installed, reload into it (right away on
+// the home screen, otherwise as soon as the user is back on home).
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker
+    .register('./sw.js', { updateViaCache: 'none' })
+    .then((reg) => {
+      reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    })
+    .catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    if (view === 'home') {
+      reloading = true;
+      location.reload();
+    } else reloadWhenHome = true;
+  });
 }

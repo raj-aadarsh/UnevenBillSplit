@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached so it opens instantly, even with
 // no signal. Same-origin files are network-first (so updates arrive quickly)
 // with a short timeout; CDN files (on-device OCR engine) are cache-first.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const SHELL = `shell-${VERSION}`;
 const CDN = 'cdn-v1';
 const ASSETS = [
@@ -22,7 +22,14 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache so a new version never
+  // precaches stale files (GitHub Pages sends max-age=600).
+  e.waitUntil(
+    caches
+      .open(SHELL)
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -62,7 +69,12 @@ self.addEventListener('fetch', (e) => {
       (async () => {
         const cache = await caches.open(SHELL);
         try {
-          const res = await Promise.race([fetch(req), timeout(3500)]);
+          // Always revalidate with GitHub so updates show up straight away.
+          const fresh =
+            req.mode === 'navigate'
+              ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+              : fetch(req, { cache: 'no-cache' });
+          const res = await Promise.race([fresh, timeout(3500)]);
           if (res.ok) cache.put(req, res.clone());
           return res;
         } catch {
