@@ -14,6 +14,8 @@
   --danger: #c0262d;
   --ok: #15803d;
   --ok-soft: #dcf3e3;
+  --pick: #15803d;
+  --on-pick: #ffffff;
   --shadow: 0 1px 2px rgba(16, 24, 26, 0.06), 0 4px 16px rgba(16, 24, 26, 0.06);
   --radius: 18px;
   --radius-sm: 12px;
@@ -39,6 +41,8 @@
     --danger: #f87171;
     --ok: #4ade80;
     --ok-soft: #0f2e1b;
+    --pick: #22c55e;
+    --on-pick: #04210f;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25);
     color-scheme: dark;
   }
@@ -858,23 +862,9 @@ main.screen-paste {
 }
 
 .chip.on {
-  background: var(--c);
-  border-color: var(--c);
-  color: #fff;
-}
-
-.chip.all.on {
-  background: var(--text);
-  border-color: var(--text);
-  color: var(--bg);
-}
-
-.chip .tick {
-  display: none;
-}
-
-.chip.on .tick {
-  display: inline;
+  background: var(--pick);
+  border-color: var(--pick);
+  color: var(--on-pick);
 }
 
 /* ---------- assign ---------- */
@@ -970,6 +960,16 @@ main.screen-paste {
   border-top: 0;
 }
 
+.pick-row.on {
+  background: var(--pick);
+  color: var(--on-pick);
+}
+
+.pick-row.on .t2 {
+  color: var(--on-pick);
+  opacity: 0.85;
+}
+
 .pick-row .grow {
   flex: 1;
   min-width: 0;
@@ -1034,7 +1034,7 @@ main.screen-paste {
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 4px 10px 4px 4px;
+  padding: 6px 12px;
   border-radius: 999px;
   background: var(--surface);
   font-size: 13px;

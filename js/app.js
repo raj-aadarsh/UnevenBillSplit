@@ -448,22 +448,16 @@ VIEWS.assign = () => {
     const apIdx = personIndex(ap);
     return `${seg}
       <div class="chips scroll">${draft.people
-        .map((p, i) => `<button class="chip ${p.id === ap ? 'on' : ''}" style="--c:${colorOf(i)}" data-action="active-person" data-person="${p.id}">${esc(p.name)}</button>`)
+        .map((p, i) => `<button class="chip ${p.id === ap ? 'on' : ''}" data-action="active-person" data-person="${p.id}">${esc(p.name)}</button>`)
         .join('')}</div>
       <p class="hint">Tap everything <b>${esc(draft.people[apIdx]?.name || '')}</b> had. Shared items are split equally.</p>
       <div class="list">${draft.bill.items
         .map((it) => {
           const on = it.people.includes(ap);
-          const avatars = it.people
-            .map((id) => {
-              const i = personIndex(id);
-              return `<span class="avatar sm" style="--c:${colorOf(i)}">${esc(initial(draft.people[i].name))}</span>`;
-            })
-            .join('');
+          const names = it.people.map((id) => esc(draft.people[personIndex(id)]?.name || '')).join(', ');
           return `<button class="pick-row ${on ? 'on' : ''}" data-action="pick" data-id="${it.id}">
-            <span class="check" style="--c:${colorOf(apIdx)}">${I.tick}</span>
             <div class="grow"><div class="t1">${esc(it.name)}</div>
-              <div class="t2">${it.people.length ? `<span style="display:flex">${avatars}</span> ${it.people.length > 1 ? `split ${it.people.length} ways` : ''}` : '<span style="color:var(--warn)">Nobody yet</span>'}</div></div>
+              <div class="t2">${it.people.length ? names : '<span style="color:var(--warn)">Nobody yet</span>'}</div></div>
             <span class="amt">${money(it.amount)}</span></button>`;
         })
         .join('')}</div>`;
@@ -478,7 +472,7 @@ VIEWS.assign = () => {
         <div class="chips">
           ${draft.people.length > 1 ? `<button class="chip all ${all ? 'on' : ''}" data-action="toggle-all" data-id="${it.id}">Everyone</button>` : ''}
           ${draft.people
-            .map((p, i) => `<button class="chip ${it.people.includes(p.id) ? 'on' : ''}" style="--c:${colorOf(i)}" data-action="toggle" data-id="${it.id}" data-person="${p.id}"><span class="tick">✓</span>${esc(p.name)}</button>`)
+            .map((p, i) => `<button class="chip ${it.people.includes(p.id) ? 'on' : ''}" data-action="toggle" data-id="${it.id}" data-person="${p.id}">${esc(p.name)}</button>`)
             .join('')}
         </div>
         ${n > 1 ? `<div class="item-split">${money(parseAmt(it.amount) / n)} each · ${fraction(n)} share</div>` : ''}
@@ -492,7 +486,7 @@ FOOTERS.assign = () => {
   const left = s.unassigned.length;
   return actionbar(`
     <div class="tally">${s.people
-      .map((p, i) => `<span class="t"><span class="avatar" style="--c:${colorOf(i)}">${esc(initial(p.name))}</span>${money(p.final)}</span>`)
+      .map((p) => `<span class="t">${esc(p.name)} ${money(p.final)}</span>`)
       .join('')}</div>
     <div class="meta"><span>${left ? `<span class="warn">${left} item${left > 1 ? 's' : ''} not assigned</span>` : '<strong>All items assigned ✓</strong>'}</span><span>incl. tax share</span></div>
     <button class="btn btn-primary btn-block ${left ? 'disabled' : ''}" data-action="to-discount">Next · Amount paid</button>`);
