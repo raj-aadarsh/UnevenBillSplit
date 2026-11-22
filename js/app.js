@@ -344,7 +344,7 @@ VIEWS.review = () => {
     <div class="field"><label>Shared by what each person ordered</label>
       <div class="money"><span class="cur">${esc(settings.currency)}</span><input class="in" data-field="discount" inputmode="decimal" value="${b.discount ? amtInputValue(b.discount) : ''}" placeholder="0" /></div></div>
     <div class="card summary" id="review-summary">${reviewSummary()}</div>
-    <div class="section-title">Total printed on bill <small>optional, for checking</small></div>
+    <div class="section-title">Total printed on bill <small>updates when you remove a charge</small></div>
     <div class="field"><label>Grand total</label>
       <div class="money"><span class="cur">${esc(settings.currency)}</span><input class="in" data-field="total" inputmode="decimal" value="${b.total ? amtInputValue(b.total) : ''}" placeholder="0" /></div></div>
     ${b.rawText ? `<details class="card" style="margin-top:16px"><summary style="font-weight:600">Text read from the photo</summary>
@@ -726,7 +726,14 @@ app.addEventListener('click', async (e) => {
     case 'del-row': {
       const list = el.dataset.list;
       const rid = el.closest('[data-id]').dataset.id;
+      const removed = draft.bill[list].find((r) => r.id === rid);
       draft.bill[list] = draft.bill[list].filter((r) => r.id !== rid);
+      // Removing a tax / service charge you didn't pay lowers the grand total too.
+      const removedAmt = parseAmt(removed?.amount);
+      if (list === 'charges' && removedAmt && parseAmt(draft.bill.total) > 0) {
+        draft.bill.total = round2(parseAmt(draft.bill.total) - removedAmt);
+        toast(`Grand total updated to ${money(draft.bill.total)}`);
+      }
       saveDraft();
       render();
       break;
