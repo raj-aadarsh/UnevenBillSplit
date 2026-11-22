@@ -3,12 +3,14 @@
 // runs in browsers and in Workers.
 
 export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-export const DEFAULT_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+// Flash-Lite first: on the free tier it is far less often "busy" than Flash,
+// and bill reading doesn't need the bigger model.
+export const DEFAULT_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 
 export class ReadError extends Error {
   constructor(message, { kind = 'error', status } = {}) {
     super(message);
-    this.kind = kind; // 'key' | 'quota' | 'network' | 'model' | 'error'
+    this.kind = kind; // 'key' | 'quota' | 'network' | 'slow' | 'model' | 'error'
     this.status = status;
   }
 }
@@ -59,16 +61,22 @@ merchant: the restaurant / shop name, or "" if not visible.
 
 Use plain numbers without currency symbols or commas. If the image is not a bill, return empty arrays and zeros.`;
 
-async function geminiFetch(path, key, init = {}) {
+async function geminiFetch(path, key, init = {}, timeoutMs = 0) {
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   let res;
   try {
     res = await fetch(`${GEMINI_BASE}/${path}`, {
       ...init,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key, ...(init.headers || {}) },
     });
   } catch {
+    if (timer) clearTimeout(timer);
+    if (ctrl?.signal.aborted) throw new ReadError('The AI model took too long.', { kind: 'slow' });
     throw new ReadError('No internet connection to reach the AI reader.', { kind: 'network' });
   }
+  if (timer) clearTimeout(timer);
   let body = null;
   try {
     body = await res.json();
@@ -127,38 +135,97 @@ function extractJson(body) {
 }
 
 /**
- * Reads a JPEG (base64, no data: prefix) and returns the raw bill JSON.
- * Tries the preferred model, then the default aliases, then any live Flash model.
+ * Runs `models` as a hedged race: the first starts at once; if it hasn't
+ * answered after `hedgeMs` (or it fails), the next one starts too. The first
+ * successful answer wins. Extra requests only happen when a model is slow.
  */
-export async function geminiReadBill({ key, base64, mimeType = 'image/jpeg', model, onModel }) {
+function hedgedRace(models, call, { hedgeMs, onModel, onAttempt }) {
+  return new Promise((resolve, reject) => {
+    let started = 0;
+    let pending = 0;
+    let done = false;
+    let lastErr;
+    const timers = [];
+    const finish = (fn, v) => {
+      if (done) return;
+      done = true;
+      timers.forEach(clearTimeout);
+      fn(v);
+    };
+    const start = (i) => {
+      if (done || i !== started || i >= models.length) return;
+      started++;
+      pending++;
+      const m = models[i];
+      const t0 = Date.now();
+      call(m).then(
+        (r) => {
+          onModel?.(m);
+          finish(resolve, r);
+        },
+        (e) => {
+          pending--;
+          lastErr = e;
+          onAttempt?.(m, Date.now() - t0, e);
+          if (e.kind === 'key' || e.kind === 'network') return finish(reject, e);
+          start(i + 1);
+          if (pending === 0 && started >= models.length) finish(reject, lastErr);
+        },
+      );
+      timers.push(setTimeout(() => start(i + 1), hedgeMs));
+    };
+    start(0);
+  });
+}
+
+/**
+ * Reads a JPEG (base64, no data: prefix) and returns the raw bill JSON.
+ * Races the preferred model and the default aliases; if all of them are
+ * unavailable, retries with whatever Flash models the key can see.
+ */
+export async function geminiReadBill({
+  key,
+  base64,
+  mimeType = 'image/jpeg',
+  model,
+  onModel,
+  onAttempt,
+  hedgeMs = 8_000,
+  callTimeoutMs = 20_000,
+  retryDelayMs = 1_500,
+}) {
   const payload = JSON.stringify({
     contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mimeType, data: base64 } }, { text: PROMPT }] }],
     generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA },
   });
-  const candidates = [...new Set([model, ...DEFAULT_MODELS].filter(Boolean))];
-  let discovered = false;
-  let lastErr;
-  for (let i = 0; i < candidates.length; i++) {
-    const m = candidates[i];
+  const call = async (m) =>
+    extractJson(
+      await geminiFetch(
+        `models/${encodeURIComponent(m)}:generateContent`,
+        key,
+        { method: 'POST', body: payload },
+        callTimeoutMs,
+      ),
+    );
+  const first = [...new Set([model, ...DEFAULT_MODELS].filter(Boolean))];
+  try {
+    return await hedgedRace(first, call, { hedgeMs, onModel, onAttempt });
+  } catch (e) {
+    if (e.kind === 'key' || e.kind === 'network') throw e;
+    // "High demand" spikes on the free tier are usually brief: retry once.
+    await new Promise((r) => setTimeout(r, retryDelayMs));
     try {
-      const body = await geminiFetch(`models/${encodeURIComponent(m)}:generateContent`, key, {
-        method: 'POST',
-        body: payload,
-      });
-      onModel?.(m);
-      return extractJson(body);
-    } catch (e) {
-      lastErr = e;
-      if (e.kind === 'key' || e.kind === 'network') throw e;
-      if (!discovered && i === candidates.length - 1) {
-        discovered = true;
-        try {
-          for (const lm of await listFlashModels(key)) if (!candidates.includes(lm)) candidates.push(lm);
-        } catch (le) {
-          if (le.kind === 'key' || le.kind === 'network') throw le;
-        }
-      }
+      return await hedgedRace(first, call, { hedgeMs, onModel, onAttempt });
+    } catch (e2) {
+      if (e2.kind === 'key' || e2.kind === 'network' || e2.kind === 'quota') throw e2;
     }
+    let live = [];
+    try {
+      live = (await listFlashModels(key)).filter((m) => !first.includes(m)).slice(0, 3);
+    } catch {
+      /* keep original error */
+    }
+    if (!live.length) throw e;
+    return hedgedRace(live, call, { hedgeMs, onModel, onAttempt });
   }
-  throw lastErr || new ReadError('The AI could not read this bill.');
 }

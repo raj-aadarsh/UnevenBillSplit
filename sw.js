@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached so it opens instantly, even with
 // no signal. Same-origin files are network-first (so updates arrive quickly)
 // with a short timeout; CDN files (on-device OCR engine) are cache-first.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL = `shell-${VERSION}`;
 const CDN = 'cdn-v1';
 const ASSETS = [

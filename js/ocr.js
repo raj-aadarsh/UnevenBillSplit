@@ -1,10 +1,10 @@
 // Bill reading, best first:
-//   1. Shared AI reader (Cloudflare Worker holding the Gemini key — nobody sees it)
-//   2. Gemini with a key saved on this phone (optional, Settings)
-//   3. On-device Tesseract.js — no network, no account
+//   1. Shared AI reader (Cloudflare Worker holding the Gemini key — the
+//      website never has the key)
+//   2. On-device Tesseract.js — no network, no account
 
 import { parseBillText } from './parser.js';
-import { ReadError, geminiReadBill, listFlashModels } from './gemini.js';
+import { ReadError } from './gemini.js';
 
 export { ReadError };
 
@@ -128,21 +128,6 @@ export async function readWithSharedReader(blob, { url, onStatus = () => {} }) {
     throw new ReadError(body?.error || `AI reader error (${res.status}).`, { kind, status: res.status });
   }
   return normalise(body, 'ai');
-}
-
-/** Own-key mode: the browser calls Gemini directly with a key saved on this phone. */
-export async function readWithGemini(blob, { key, model, onModel, onStatus = () => {} }) {
-  onStatus('Preparing photo…');
-  const base64 = await toJpegBase64(blob);
-  onStatus('Reading bill with AI…');
-  return normalise(await geminiReadBill({ key, base64, model, onModel }), 'ai');
-}
-
-/** Quick check used by Settings → "Test key". */
-export async function testGeminiKey(key) {
-  const models = await listFlashModels(key);
-  if (!models.length) throw new ReadError('Key works, but no Gemini Flash model is available to it.');
-  return models;
 }
 
 // ---------- On-device (Tesseract.js) ----------

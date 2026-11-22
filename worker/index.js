@@ -73,7 +73,10 @@ export default {
     }
 
     try {
-      const bill = await geminiReadBill({ key: apiKey, base64: image, model: env.GEMINI_MODEL });
+      const t0 = Date.now();
+      let used = '';
+      const bill = await geminiReadBill({ key: apiKey, base64: image, model: env.GEMINI_MODEL, onModel: (m) => (used = m), onAttempt: (m, ms, e) => console.log('attempt failed', m, `${ms}ms`, e.kind, e.status, String(e.message).slice(0, 160)) });
+      console.log('read ok', used, `${Date.now() - t0}ms`);
       return json(bill, 200, cors);
     } catch (e) {
       const status = e instanceof ReadError && e.kind === 'quota' ? 429 : 502;

@@ -1,5 +1,5 @@
 import { computeSplit, round2 } from './split.js';
-import { readWithGemini, readWithSharedReader, readOnDevice, readFromText, testGeminiKey } from './ocr.js';
+import { readWithSharedReader, readOnDevice, readFromText } from './ocr.js';
 import { SHARED_READER_URL } from './config.js';
 
 // ---------- tiny helpers ----------
@@ -43,12 +43,18 @@ const store = {
 const K = { settings: 'ubs.settings', draft: 'ubs.draft', history: 'ubs.history' };
 const COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5', '#0d9488', '#9333ea'];
 
-let settings = { apiKey: '', model: '', mode: 'auto', currency: '₹', ...store.get(K.settings, {}) };
+let settings = { mode: 'auto', currency: '₹', ...store.get(K.settings, {}) };
+// Older versions let people save their own Gemini key on the phone. The key now
+// lives only on the server, so wipe any copy left in this browser.
+if ('apiKey' in settings || 'model' in settings) {
+  delete settings.apiKey;
+  delete settings.model;
+  store.set(K.settings, settings);
+}
 let draft = store.get(K.draft, null);
 let pastSplits = store.get(K.history, []);
 let view = 'home';
 let reading = null; // { url, status, progress, token, error }
-let keyTest = null; // { state: 'busy'|'ok'|'bad', msg }
 let installPrompt = null;
 
 const saveSettings = () => store.set(K.settings, settings);
@@ -198,7 +204,7 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 VIEWS.home = () => {
-  const aiOn = !!(settings.apiKey || SHARED_READER_URL) && settings.mode !== 'device';
+  const aiOn = !!SHARED_READER_URL && settings.mode !== 'device';
   const cont =
     draft && draft.bill.items.length && draft.step !== 'result'
       ? `<div class="section-title">In progress</div>
@@ -245,7 +251,7 @@ VIEWS.home = () => {
     <button class="mode-pill ${aiOn ? 'on' : ''}" data-action="settings">
       <span class="dot"></span>
       <span>${aiOn ? 'AI bill reading is on' : 'Reading bills on this phone'}</span>
-      <span class="go">${aiOn ? 'Settings' : 'Turn on free AI →'}</span>
+      <span class="go">Settings</span>
     </button>
     ${install ? `<div style="margin-top:12px">${install}</div>` : ''}
     ${cont}
@@ -256,39 +262,15 @@ VIEWS.home = () => {
 // ----- settings -----
 
 VIEWS.settings = () => {
-  const ks = keyTest
-    ? `<div class="status-line ${keyTest.state === 'ok' ? 'ok' : keyTest.state === 'bad' ? 'bad' : ''}">${esc(keyTest.msg)}</div>`
-    : '';
-  const builtIn = SHARED_READER_URL
-    ? `<div class="banner"><span class="b-icon">✨</span><div><b>AI bill reading is built in.</b> No key needed. Just scan.</div></div>`
-    : '';
   return `
-    <div class="section-title">AI bill reading · free</div>
-    ${builtIn}
-    <details class="card" ${SHARED_READER_URL && !settings.apiKey ? '' : 'open'} style="${builtIn ? 'margin-top:12px' : ''}">
-      <summary style="font-weight:600;cursor:pointer">${SHARED_READER_URL ? 'Advanced: use your own Gemini key' : 'Google Gemini API key'}</summary>
-      <p class="hint" style="margin:6px 0 0">${SHARED_READER_URL ? 'Optional. Only needed if the built-in reader is busy. ' : 'Reads bills far more accurately than on-device reading. '}The free tier needs no card. Your key is saved only on this phone.</p>
-      <ol class="steps">
-        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with Google.</li>
-        <li>Tap <b>Create API key</b> and copy it.</li>
-        <li>Paste it below and tap <b>Save</b>.</li>
-      </ol>
-      <div class="form-row">
-        <div class="key-wrap">
-          <input id="key-in" class="text-in" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste API key" value="${esc(settings.apiKey)}" />
-          <button class="btn btn-secondary" style="min-height:48px;padding:0 14px" data-action="toggle-key" aria-label="Show key">👁</button>
-        </div>
-        <div class="row-btns" style="display:flex;gap:10px;margin-top:4px">
-          <button class="btn btn-primary" style="flex:1" data-action="save-key">Save &amp; test</button>
-          ${settings.apiKey ? '<button class="btn btn-secondary" data-action="remove-key">Remove</button>' : ''}
-        </div>
-        ${ks}
-        ${settings.model ? `<div class="hint" style="margin:4px 0 0">Model: ${esc(settings.model)}</div>` : ''}
-      </div>
-    </details>
+    <div class="section-title">Bill reading</div>
+    ${
+      SHARED_READER_URL
+        ? `<div class="banner"><span class="b-icon">✨</span><div><b>AI bill reading is built in.</b> Nothing to set up. Just scan.</div></div>`
+        : ''
+    }
 
-    <div class="section-title">How to read bills</div>
-    <div class="card" style="padding:4px 16px">
+    <div class="card" style="padding:4px 16px;margin-top:12px">
       <label class="radio-row"><input type="radio" name="mode" value="auto" data-change="mode" ${settings.mode !== 'device' ? 'checked' : ''}/>
         <div><div>Use AI when available</div><div class="t2">If AI fails or the free limit is reached, it switches to on-device reading.</div></div></label>
       <label class="radio-row"><input type="radio" name="mode" value="device" data-change="mode" ${settings.mode === 'device' ? 'checked' : ''}/>
@@ -658,25 +640,10 @@ async function handlePhoto(file) {
   let result;
   let note = '';
   const onStatus = (s) => alive() && setReadStatus(s);
-  // Try AI readers in order: own key (if set) → shared reader → on-device.
+  // AI reader on the server first, then on-device.
   const aiReaders = [];
-  if (settings.mode !== 'device') {
-    if (settings.apiKey)
-      aiReaders.push(() =>
-        readWithGemini(file, {
-          key: settings.apiKey,
-          model: settings.model,
-          onModel: (m) => {
-            if (settings.model !== m) {
-              settings.model = m;
-              saveSettings();
-            }
-          },
-          onStatus,
-        }),
-      );
-    if (SHARED_READER_URL) aiReaders.push(() => readWithSharedReader(file, { url: SHARED_READER_URL, onStatus }));
-  }
+  if (settings.mode !== 'device' && SHARED_READER_URL)
+    aiReaders.push(() => readWithSharedReader(file, { url: SHARED_READER_URL, onStatus }));
   try {
     for (const read of aiReaders) {
       try {
@@ -727,7 +694,6 @@ app.addEventListener('click', async (e) => {
       go(PREV[view] || 'home');
       break;
     case 'settings':
-      keyTest = null;
       go('settings');
       break;
     case 'paste':
@@ -775,42 +741,6 @@ app.addEventListener('click', async (e) => {
         saveHistory();
         render();
       }
-      break;
-
-    // settings
-    case 'toggle-key': {
-      const k = $('#key-in');
-      k.type = k.type === 'password' ? 'text' : 'password';
-      break;
-    }
-    case 'save-key': {
-      const key = $('#key-in').value.trim();
-      if (!key) {
-        toast('Paste your API key first');
-        return;
-      }
-      settings.apiKey = key;
-      settings.model = '';
-      saveSettings();
-      keyTest = { state: 'busy', msg: 'Testing key…' };
-      render();
-      try {
-        const models = await testGeminiKey(key);
-        settings.model = models.find((m) => /flash-latest$/.test(m)) || models[0];
-        saveSettings();
-        keyTest = { state: 'ok', msg: '✓ Key works. AI bill reading is on.' };
-      } catch (err) {
-        keyTest = { state: 'bad', msg: err.message };
-      }
-      if (view === 'settings') render();
-      break;
-    }
-    case 'remove-key':
-      settings.apiKey = '';
-      settings.model = '';
-      saveSettings();
-      keyTest = null;
-      render();
       break;
 
     // paste

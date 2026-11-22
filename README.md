@@ -29,11 +29,31 @@ Amounts are rounded to paise so that everyone's shares add up exactly to the tot
 
 | Mode | Accuracy | Needs |
 |---|---|---|
-| **AI (Google Gemini Flash, free tier)** | Best. Handles crumpled, angled or faded bills | A free API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (no card), pasted in the app's Settings |
+| **AI (Google Gemini Flash-Lite, free tier)** | Best. Handles crumpled, angled or faded bills | Nothing for users. Built in through the shared reader below |
 | **On this phone (Tesseract.js)** | Good on clear, straight photos | Nothing. Bundled in `vendor/` and works offline |
 | **Paste text** | Very good | Copy the text with iPhone Live Text or Google Lens |
 
-The API key is stored only on your phone (browser storage), never in this repo. If the AI fails or hits the free limit, the app switches to on-device reading automatically.
+If the AI is busy, slow (over 40 s) or out of free quota, the app switches to on-device reading automatically.
+
+### Shared AI reader (`worker/`)
+
+A free Cloudflare Worker (`bill-split-reader`) holds the Gemini API key as an **encrypted secret**. The website sends the bill photo to the Worker and gets back only the item list. The key is never in this repo, never sent to the browser, and never echoed in error messages.
+
+- Only requests from the website's origin are accepted (`ALLOWED_ORIGINS` in `worker/wrangler.toml`).
+- Input is a photo only, with a fixed bill-reading prompt, so it can't be used as a general AI proxy.
+- Photo size is capped, and each visitor is limited to 12 scans a minute.
+- Flash-Lite is tried first. Flash is started as a backup if it's slow or busy, and both are retried once.
+- **Never enable billing** on the Google project that owns the key. On the free tier it cannot cost money; abuse can at most use up the day's free quota.
+
+Deploy or update it:
+
+```bash
+cd worker
+npx wrangler@4.157.0 login     # once
+npx wrangler@4.157.0 deploy
+```
+
+Set the key in the Cloudflare dashboard: **Workers & Pages → bill-split-reader → Settings → Variables and Secrets → Add**, type **Secret**, name `GEMINI_API_KEY`. The Worker's address goes in `js/config.js`.
 
 ## Put it online with GitHub Pages (free)
 
@@ -69,7 +89,10 @@ index.html, css/styles.css
 js/app.js       screens and state
 js/split.js     split calculation (pure, tested)
 js/parser.js    bill text → items / taxes (tested)
-js/ocr.js       Gemini + on-device OCR
+js/ocr.js       shared AI reader + on-device OCR
+js/gemini.js    Gemini request logic (used by the Worker)
+js/config.js    address of the shared AI reader
+worker/         Cloudflare Worker that holds the key
 sw.js           offline cache
 vendor/         Tesseract.js 7.0.0 (Apache-2.0) + English data
 ```
